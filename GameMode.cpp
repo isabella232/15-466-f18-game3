@@ -22,10 +22,6 @@
 #include <map>
 #include <cstddef>
 #include <random>
-
-// for sleep function used at the beginning of this game
-//#include <thread>
-//#include <chrono>
 #include <queue>
 
 Load< MeshBuffer > meshes(LoadTagDefault, [](){
@@ -89,7 +85,6 @@ Load< GLuint > blur_program(LoadTagDefault, [](){
 		"	float amt = (0.01 * textureSize(tex,0).y) * max(0.0,(length(at) - 0.3)/0.2);\n"
 		//pick a vector to move in for blur using function inspired by:
 		//https://stackoverflow.com/questions/12964279/whats-the-origin-of-this-glsl-rand-one-liner
-        //"	vec2 ofs = amt * normalize(vec2(\n"
         "	vec2 ofs = 10 * normalize(vec2(\n"  // blur evenly
         "		fract(dot(gl_FragCoord.xy ,vec2(12.9898,78.233))),\n"
         "		fract(dot(gl_FragCoord.xy ,vec2(96.3869,-27.5796)))\n"
@@ -573,10 +568,9 @@ void GameMode::update(float elapsed) {
 	camera_parent_transform->rotation = glm::angleAxis(camera_spin, glm::vec3(0.0f, 0.0f, 1.0f));
 	spot_parent_transform->rotation = glm::angleAxis(spot_spin, glm::vec3(0.0f, 0.0f, 1.0f));
 
-    if (answer.empty()) {  // play_list.empty()
-        // generate next stage
+    if (answer.empty()) {
         if (at_stage == 8) win = true;
-        else               set_play_list();
+        else               set_play_list();  // generate next stage
     } else if (!play_list.empty()) {
         bool bright = true;
         if (at_stage == 8) bright = false;  // the cube won't lit at the final stage

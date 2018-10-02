@@ -1,11 +1,11 @@
 # Game Information
 (Note: fill in this portion with information about your game.)
 
-Title: (TODO: your game's title)
+Title: Musical Bloom
 
-Author: (TODO: your name)
+Author: Yen-Hsiang Huang
 
-Design Document: [TODO: name of design document](TODO: link to design document)
+Design Document: [Musical Bloom](http://graphics.cs.cmu.edu/courses/15-466-f18/game3-designs/ishmaelj/)
 
 Screen Shot:
 
@@ -13,15 +13,23 @@ Screen Shot:
 
 How To Play:
 
-TODO: describe the controls and (if needed) goals/strategy.
+Listen and observe the order of cubes to be triggered. Press the arrow keys in exactly the same order to win. There are 8 stages in total.
 
 Changes From The Design Document:
 
-TODO: what did you need to add/remove/modify from the original design? Why?
+At the final stage, the cubes will not glow. You can only rely on your ears to get it right.
 
 Good / Bad / Ugly Code:
 
-TODO: provide examples of code you wrote from this project that you think is good (elegant, simple, useful), bad (hack-y, brittle, unreadable), and ugly (particularly inelegant). Provide a sentence or two of justification for the examples.
+- Good on game logic handling, and the Cube object is carefully organized, which greatly simplifies the code.
+
+- Game levels are hard coded. Random generated levels might also be good.
+
+- Didn't quite accomplish blooming effect.
+
+Sound Effects:
+
+- [UbikPhonik](https://freesound.org/people/UbikPhonik/packs/11206/) (licensed under the [Attribution License](https://creativecommons.org/licenses/by/3.0/))
 
 # Changes In This Base Code
 
@@ -40,9 +48,6 @@ This shader, along with the code in GameMode::draw() which sets it up, is going 
 I also added a blur shader that renders the scene to an offscreen framebuffer and then samples and averages it to come up with a sort of lens blur effect. (See the third part of GameMode::draw .)
 
 
-Sound Effects:
-
-- [UbikPhonik](https://freesound.org/people/UbikPhonik/packs/11206/) (licensed under the [Attribution License](https://creativecommons.org/licenses/by/3.0/))
 
 # Using This Base Code
 
