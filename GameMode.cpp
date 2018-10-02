@@ -24,8 +24,9 @@
 #include <random>
 
 // for sleep function used at the beginning of this game
-#include <thread>
-#include <chrono>
+//#include <thread>
+//#include <chrono>
+#include <queue>
 
 Load< MeshBuffer > meshes(LoadTagDefault, [](){
 	return new MeshBuffer(data_path("vignette.pnct"));
@@ -145,6 +146,9 @@ Load< GLuint > marble_tex(LoadTagDefault, [](){
 	return new GLuint(load_texture(data_path("textures/marble.png")));
 });
 
+/**
+   Setting up a bunch of texture
+ */
 Load< GLuint > white_tex(LoadTagDefault, [](){
 	GLuint tex = 0;
 	glGenTextures(1, &tex);
@@ -285,38 +289,92 @@ Scene::Camera *camera = nullptr;
 Scene::Transform *spot_parent_transform = nullptr;
 Scene::Lamp *spot = nullptr;
 
+/**
+   Game level elements
+ */
+enum KEY {
+    NONE,
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT,
+};
+
+std::queue< std::pair< KEY, float> > play_list;
+std::queue< KEY > answer;
+float count_down = 0.5f;
+uint32_t at_stage = 0;
+
+// storing the sounds to play and corresponding durations
+std::vector< KEY > prelude = {NONE, NONE, NONE, UP, LEFT, DOWN, RIGHT, NONE, NONE, NONE};
+std::vector< float > prelude_durations = {0.5f, 0.5f, 0.5f, 0.2f, 0.2f, 0.2f, 0.2f, 0.5f, 0.5f, 0.5f};
+std::vector< std::vector< float > > durations = {
+    {0.5f, 0.5f, 0.5f, 0.5f},
+    {0.5f, 0.5f, 0.5f, 0.5f, 0.5f},
+    {0.45f, 0.45f, 0.45f, 0.45f, 0.45f},
+    {0.3f, 0.3f, 0.3f, 0.3f, 0.4f, 0.4f, 0.4f},
+    {0.3f, 0.3f, 0.3f, 0.3f, 0.4f, 0.35f},
+    {0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f},
+    {0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f},
+    {0.3f, 0.3f, 0.5f, 0.3f, 0.3f, 0.3f, 0.5f, 0.5f},
+};
+std::vector< std::vector< KEY > > stage = {
+    {LEFT, UP, RIGHT, DOWN},
+    {LEFT, UP, RIGHT, RIGHT, DOWN},
+    {DOWN, LEFT, UP, RIGHT, RIGHT},
+    {UP, UP, DOWN, DOWN, RIGHT, LEFT, LEFT},
+    {UP, UP, UP, DOWN, DOWN, LEFT, RIGHT},
+    {UP, UP, UP, DOWN, LEFT, LEFT, RIGHT, RIGHT, RIGHT},
+    {DOWN, DOWN, DOWN, LEFT, UP, UP, RIGHT, LEFT},
+    {LEFT, LEFT, UP, RIGHT, RIGHT, DOWN, DOWN}
+};
+
 struct Cube {
     Scene::Object *obj;
-    GLuint dark_tex, bright_tex;
+    GLuint dark_tex;
+    GLuint bright_tex;
     Load< Sound::Sample > sound;
+    bool playing = false;
 
-
-    void play() {
+    void play_sound() {
         sound->play( obj->transform->make_local_to_world() * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) );
     }
 
-    void handle_event(const GLuint dark, const GLuint bright) {
-        if (obj->programs[Scene::Object::ProgramTypeDefault].textures[0] == dark) {
-            obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = bright;
-            obj->count_down = 1.0f;
-            play();
-        } else {
-            obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = dark;
+    bool is_dark() {
+        return obj->programs[Scene::Object::ProgramTypeDefault].textures[0] == dark_tex;
+    }
+
+    void set_dark() {
+        obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = dark_tex;
+    }
+
+    void set_bright() {
+        obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = bright_tex;
+    }
+
+    void trigger(float count_down = 0.5f, bool user_strike = false, bool bright = true) {
+        if (user_strike) {
+            if (is_dark()) set_bright();
+            play_sound();
+            playing = true;
+            obj->count_down = count_down;
+        } else if (is_dark()) {
+            if (bright) set_bright();
+            if (!playing) {
+                play_sound();
+                playing = true;
+            }
+            obj->count_down = count_down;
         }
     }
 
-    void update(float elapsed, const GLuint dark) {
-        if (obj->count_down <= 0.0f) {
-            obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = dark;
-        } else {
+    void update(float elapsed) {
+        if (obj->count_down <= 0.0f && playing) {
+            set_dark();
+            playing = false;
+        } else if (obj->count_down > 0.0f){
             obj->count_down -= elapsed;
         }
-    }
-
-    void printTrans() {
-        std::cout << obj->transform->position.x << " "
-                  << obj->transform->position.y << " "
-                  << obj->transform->position.z << std::endl;
     }
 };
 
@@ -325,14 +383,22 @@ Cube blue_cube;
 Cube yellow_cube;
 Cube green_cube;
 
-enum KEY {
-    UP,
-    DOWN,
-    LEFT,
-    RIGHT,
-};
+/**
+   push elements in stage vector into play_list
+ */
+void set_play_list() {
+    play_list = {};  // clear
+    for (uint32_t i = 0; i < prelude.size(); ++i) {
+        play_list.push(std::make_pair(prelude[i], prelude_durations[i]));
+    }
+    for (uint32_t i = 0; i < stage[at_stage].size(); ++i) {
+        play_list.push(std::make_pair(stage[at_stage][i], durations[at_stage][i]));
+        answer.push(stage[at_stage][i]);
+    }
+    count_down = play_list.front().second;
 
-std::vector< KEY > stage1 = {LEFT, UP, RIGHT, DOWN};
+    ++at_stage;
+}
 
 Load< Scene > scene(LoadTagDefault, [](){
 	Scene *ret = new Scene;
@@ -375,6 +441,22 @@ Load< Scene > scene(LoadTagDefault, [](){
 		} else {
             obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *dark_blue_tex;
 		}
+
+        {  // bind texture and sound
+            red_cube.dark_tex = *dark_red_tex;
+            red_cube.bright_tex = *bright_red_tex;
+            blue_cube.dark_tex = *dark_blue_tex;
+            blue_cube.bright_tex = *bright_blue_tex;
+            yellow_cube.dark_tex = *dark_yellow_tex;
+            yellow_cube.bright_tex = *bright_yellow_tex;
+            green_cube.dark_tex = *dark_green_tex;
+            green_cube.bright_tex = *bright_green_tex;
+
+            red_cube.sound = A_sound;
+            blue_cube.sound = B_sound;
+            yellow_cube.sound = C_sound;
+            green_cube.sound = D_sound;
+        }
 
 		obj->programs[Scene::Object::ProgramTypeShadow] = depth_program_info;
 
@@ -424,6 +506,7 @@ Load< Scene > scene(LoadTagDefault, [](){
 });
 
 GameMode::GameMode() {
+    set_play_list();
 }
 
 GameMode::~GameMode() {
@@ -448,51 +531,37 @@ bool GameMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 
 	}
 
-    if (evt.type == SDL_KEYDOWN || evt.type == SDL_KEYUP) {
-        if (play_start_music) {
-            red_cube.sound = A_sound;
-            blue_cube.sound = B_sound;
-            yellow_cube.sound = C_sound;
-            green_cube.sound = D_sound;
+    if (win) {
+        show_win_scene();
+    } else if (!play_list.empty()) {
+        // don't detect keyboard
+    } else if (evt.type == SDL_KEYDOWN) {
+        KEY input = NONE;
+        if (evt.key.keysym.scancode == SDL_SCANCODE_UP && evt.type == SDL_KEYDOWN) {
+            red_cube.trigger(0.5f, true);
+            input = UP;
+        }
+        if (evt.key.keysym.scancode == SDL_SCANCODE_LEFT && evt.type == SDL_KEYDOWN) {
+            blue_cube.trigger(0.5f, true);
+            input = LEFT;
+        }
+        if (evt.key.keysym.scancode == SDL_SCANCODE_DOWN && evt.type == SDL_KEYDOWN) {
+            yellow_cube.trigger(0.5f, true);
+            input = DOWN;
+        }
+        if (evt.key.keysym.scancode == SDL_SCANCODE_RIGHT && evt.type == SDL_KEYDOWN) {
+            green_cube.trigger(0.5f, true);
+            input = RIGHT;
+        }
 
-            red_cube.dark_tex = *dark_red_tex;
-            red_cube.bright_tex = *bright_red_tex;
-
-            red_cube.play();
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            blue_cube.play();
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            yellow_cube.play();
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            green_cube.play();
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            play_start_music = false;
-
-            for (auto &key : stage1) {
-                if (key == UP) {
-                    red_cube.handle_event(*dark_red_tex, *bright_red_tex);
-                } else if (key == LEFT) {
-                    blue_cube.handle_event(*dark_blue_tex, *bright_blue_tex);
-                } else if (key == DOWN) {
-                    yellow_cube.handle_event(*dark_yellow_tex, *bright_yellow_tex);
-                } else if (key == RIGHT) {
-                    green_cube.handle_event(*dark_green_tex, *bright_green_tex);
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            }
-
-        } else {
-            if (evt.key.keysym.scancode == SDL_SCANCODE_UP && evt.type == SDL_KEYDOWN) {
-                red_cube.handle_event(*dark_red_tex, *bright_red_tex);
-            }
-            if (evt.key.keysym.scancode == SDL_SCANCODE_LEFT && evt.type == SDL_KEYDOWN) {
-                blue_cube.handle_event(*dark_blue_tex, *bright_blue_tex);
-            }
-            if (evt.key.keysym.scancode == SDL_SCANCODE_DOWN && evt.type == SDL_KEYDOWN) {
-                yellow_cube.handle_event(*dark_yellow_tex, *bright_yellow_tex);
-            }
-            if (evt.key.keysym.scancode == SDL_SCANCODE_RIGHT && evt.type == SDL_KEYDOWN) {
-                green_cube.handle_event(*dark_green_tex, *bright_green_tex);
+        if (!answer.empty()) {
+            if (input == answer.front()) {
+                std::cout << "Correct!" << std::endl;
+                answer.pop();
+            } else {
+                std::cout << "Wrong!" << std::endl;
+                answer = {};  // clear queue
+                --at_stage;  // restart level
             }
         }
     }
@@ -504,10 +573,36 @@ void GameMode::update(float elapsed) {
 	camera_parent_transform->rotation = glm::angleAxis(camera_spin, glm::vec3(0.0f, 0.0f, 1.0f));
 	spot_parent_transform->rotation = glm::angleAxis(spot_spin, glm::vec3(0.0f, 0.0f, 1.0f));
 
-    red_cube.update(elapsed, *dark_red_tex);
-    blue_cube.update(elapsed, *dark_blue_tex);
-    yellow_cube.update(elapsed, *dark_yellow_tex);
-    green_cube.update(elapsed, *dark_green_tex);
+    if (answer.empty()) {  // play_list.empty()
+        // generate next stage
+        if (at_stage == 8) win = true;
+        else               set_play_list();
+    } else if (!play_list.empty()) {
+        bool bright = true;
+        if (at_stage == 8) bright = false;  // the cube won't lit at the final stage
+
+        if (play_list.front().first == UP) {
+            red_cube.trigger(count_down, false, bright);
+        } else if (play_list.front().first == LEFT) {
+            blue_cube.trigger(count_down, false, bright);
+        } else if (play_list.front().first == DOWN) {
+            yellow_cube.trigger(count_down, false, bright);
+        } else if (play_list.front().first == RIGHT) {
+            green_cube.trigger(count_down, false, bright);
+        }
+
+        if (count_down <= 0.0f) {
+            play_list.pop();
+            count_down = play_list.front().second;
+        } else if (count_down > 0.0f && !play_list.empty()) {
+            count_down -= elapsed;
+        }
+    }
+
+    red_cube.update(elapsed);
+    blue_cube.update(elapsed);
+    yellow_cube.update(elapsed);
+    green_cube.update(elapsed);
 }
 
 //GameMode will render to some offscreen framebuffer(s).
@@ -694,4 +789,15 @@ void GameMode::draw(glm::uvec2 const &drawable_size) {
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void GameMode::show_win_scene() {
+	std::shared_ptr< MenuMode > menu = std::make_shared< MenuMode >();
+
+	std::shared_ptr< Mode > game = shared_from_this();
+	menu->background = game;
+
+	menu->choices.emplace_back("YOU WIN");
+
+	Mode::set_current(menu);
 }
