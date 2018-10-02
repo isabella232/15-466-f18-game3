@@ -15,6 +15,8 @@ How To Play:
 
 Listen and observe the order of cubes to be triggered. Press the arrow keys in exactly the same order to win. There are 8 stages in total. If any input is wrong, the program will restart current level automatically.
 
+At the beginning of each level, the game starts with a prelude (4 ascending sounds, can be ignored), followed by a series of sounds. The player need to replay the series of sounds after the prelude, not the prelude itself.
+
 Changes From The Design Document:
 
 At the final stage, the cubes will not glow. You can only rely on your ears to get it right.
