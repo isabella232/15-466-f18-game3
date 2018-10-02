@@ -39,12 +39,16 @@ TextureProgram::TextureProgram() {
 		"uniform vec2 spot_outer_inner;\n"
 		"uniform sampler2D tex;\n"
 		"uniform sampler2DShadow spot_depth_tex;\n"
+        "uniform bool horizontal;\n"  // new
+        "uniform float weight[5] = float[] (0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);\n"  // new
 		"in vec3 position;\n"
 		"in vec3 normal;\n"
 		"in vec4 color;\n"
 		"in vec2 texCoord;\n"
 		"in vec4 spotPosition;\n"
-		"out vec4 fragColor;\n"
+		//"out vec4 fragColor;\n"
+		//"out vec4 brightColor;\n"  // new
+        "out vec4 blurColor;\n"  // new
 		"void main() {\n"
 		"	vec3 total_light = vec3(0.0, 0.0, 0.0);\n"
 		"	vec3 n = normalize(normal);\n"
@@ -69,7 +73,34 @@ TextureProgram::TextureProgram() {
 		//"		fragColor = vec4(s,s,s, 1.0);\n" //DEBUG: just show shadow
 		"	}\n"
 
-		"	fragColor = texture(tex, texCoord) * vec4(color.rgb * total_light, color.a);\n"
+		"	vec4 fragColor = texture(tex, texCoord) * vec4(color.rgb * total_light, color.a);\n"
+        //"   float brightness = dot(fragColor.rgb, vec3(0.2126, 0.7152, 0.0722));\n"
+        //"   vec4 brightColor;\n"
+        //"   if (brightness > 0.8)\n"
+        //"       brightColor = vec4(fragColor.rgb, 1.0);\n"
+        //"   else\n"
+        //"       brightColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+
+        //"   vec2 tex_offset = 1.0 / textureSize(tex, 0);\n" // gets size of single texel
+
+        //"   vec3 result = texture(tex, texCoord).rgb * weight[0];\n" // current fragment's contribution
+        //"   if (horizontal) {\n"
+        //"       for(int i = 1; i < 5; ++i) {\n"
+        //"           result += texture(tex, texCoord + vec2(tex_offset.x * i, 0.0)).rgb * weight[i];\n"
+        //"           result += texture(tex, texCoord - vec2(tex_offset.x * i, 0.0)).rgb * weight[i];\n"
+        //"       }\n"
+        //"   } else {\n"
+        //"       for(int i = 1; i < 5; ++i) {\n"
+        //"           result += texture(tex, texCoord + vec2(0.0, tex_offset.y * i)).rgb * weight[i];\n"
+        //"           result += texture(tex, texCoord - vec2(0.0, tex_offset.y * i)).rgb * weight[i];\n"
+        //"       }\n"
+        //"   }\n"
+
+
+        //"   blurColor = vec4(result, 1.0);\n"
+        //"   blurColor = brightColor;"
+
+        "    blurColor = fragColor;\n"
 		"}\n"
 	);
 

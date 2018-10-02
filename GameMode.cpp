@@ -4,6 +4,7 @@
 #include "Load.hpp"
 #include "MeshBuffer.hpp"
 #include "Scene.hpp"
+#include "Sound.hpp"
 #include "gl_errors.hpp" //helper for dumpping OpenGL error messages
 #include "check_fb.hpp" //helper for checking currently bound OpenGL framebuffer
 #include "read_chunk.hpp" //helper for reading a vector of structures from a file
@@ -22,6 +23,9 @@
 #include <cstddef>
 #include <random>
 
+// for sleep function used at the beginning of this game
+#include <thread>
+#include <chrono>
 
 Load< MeshBuffer > meshes(LoadTagDefault, [](){
 	return new MeshBuffer(data_path("vignette.pnct"));
@@ -33,6 +37,19 @@ Load< GLuint > meshes_for_texture_program(LoadTagDefault, [](){
 
 Load< GLuint > meshes_for_depth_program(LoadTagDefault, [](){
 	return new GLuint(meshes->make_vao_for_program(depth_program->program));
+});
+
+Load< Sound::Sample > A_sound(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("A.wav"));
+});
+Load< Sound::Sample > B_sound(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("B.wav"));
+});
+Load< Sound::Sample > C_sound(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("C.wav"));
+});
+Load< Sound::Sample > D_sound(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("D.wav"));
 });
 
 //used for fullscreen passes:
@@ -61,24 +78,32 @@ Load< GLuint > blur_program(LoadTagDefault, [](){
 		"#version 330\n"
 		"uniform sampler2D tex;\n"
 		"out vec4 fragColor;\n"
+
+        "uniform bool horizontal;\n"
+        "uniform float weight[5] = float[] (0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);\n"
+
 		"void main() {\n"
 		"	vec2 at = (gl_FragCoord.xy - 0.5 * textureSize(tex, 0)) / textureSize(tex, 0).y;\n"
 		//make blur amount more near the edges and less in the middle:
 		"	float amt = (0.01 * textureSize(tex,0).y) * max(0.0,(length(at) - 0.3)/0.2);\n"
 		//pick a vector to move in for blur using function inspired by:
 		//https://stackoverflow.com/questions/12964279/whats-the-origin-of-this-glsl-rand-one-liner
-		"	vec2 ofs = amt * normalize(vec2(\n"
-		"		fract(dot(gl_FragCoord.xy ,vec2(12.9898,78.233))),\n"
-		"		fract(dot(gl_FragCoord.xy ,vec2(96.3869,-27.5796)))\n"
-		"	));\n"
+        //"	vec2 ofs = amt * normalize(vec2(\n"
+        "	vec2 ofs = 10 * normalize(vec2(\n"  // blur evenly
+        "		fract(dot(gl_FragCoord.xy ,vec2(12.9898,78.233))),\n"
+        "		fract(dot(gl_FragCoord.xy ,vec2(96.3869,-27.5796)))\n"
+        "	));\n"
+
 		//do a four-pixel average to blur:
-		"	vec4 blur =\n"
-		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(ofs.x,ofs.y)) / textureSize(tex, 0))\n"
-		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(-ofs.y,ofs.x)) / textureSize(tex, 0))\n"
-		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(-ofs.x,-ofs.y)) / textureSize(tex, 0))\n"
-		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(ofs.y,-ofs.x)) / textureSize(tex, 0))\n"
-		"	;\n"
-		"	fragColor = vec4(blur.rgb, 1.0);\n" //blur;\n"
+        "	vec4 blur =\n"
+        "		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(ofs.x,ofs.y)) / textureSize(tex, 0))\n"
+        "		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(-ofs.y,ofs.x)) / textureSize(tex, 0))\n"
+        "		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(-ofs.x,-ofs.y)) / textureSize(tex, 0))\n"
+        "		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(ofs.y,-ofs.x)) / textureSize(tex, 0))\n"
+        "	;\n"
+
+
+		"	fragColor = vec4(blur.rgb, 1.0) * 2.0;\n" //blur;\n"
 		"}\n"
 	);
 
@@ -124,7 +149,7 @@ Load< GLuint > white_tex(LoadTagDefault, [](){
 	GLuint tex = 0;
 	glGenTextures(1, &tex);
 	glBindTexture(GL_TEXTURE_2D, tex);
-	glm::u8vec4 white(0xff, 0xff, 0xff, 0xff);
+    glm::u8vec4 white(0xff, 0xff, 0xff, 0xff);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, glm::value_ptr(white));
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -135,11 +160,179 @@ Load< GLuint > white_tex(LoadTagDefault, [](){
 	return new GLuint(tex);
 });
 
+Load< GLuint > bright_red_tex(LoadTagDefault, [](){
+	GLuint tex = 0;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glm::u8vec4 white(0xff, 0x00, 0x00, 0xff);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, glm::value_ptr(white));
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	return new GLuint(tex);
+});
+
+Load< GLuint > dark_red_tex(LoadTagDefault, [](){
+	GLuint tex = 0;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glm::u8vec4 white(0x0f, 0x00, 0x00, 0xff);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, glm::value_ptr(white));
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	return new GLuint(tex);
+});
+
+Load< GLuint > bright_green_tex(LoadTagDefault, [](){
+	GLuint tex = 0;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glm::u8vec4 white(0x00, 0xff, 0x00, 0xff);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, glm::value_ptr(white));
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	return new GLuint(tex);
+});
+
+Load< GLuint > dark_green_tex(LoadTagDefault, [](){
+	GLuint tex = 0;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glm::u8vec4 white(0x00, 0x0f, 0x00, 0xff);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, glm::value_ptr(white));
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	return new GLuint(tex);
+});
+
+Load< GLuint > bright_blue_tex(LoadTagDefault, [](){
+	GLuint tex = 0;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glm::u8vec4 white(0x00, 0x00, 0xff, 0xff);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, glm::value_ptr(white));
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	return new GLuint(tex);
+});
+
+Load< GLuint > dark_blue_tex(LoadTagDefault, [](){
+	GLuint tex = 0;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glm::u8vec4 white(0x00, 0x00, 0x0f, 0xff);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, glm::value_ptr(white));
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	return new GLuint(tex);
+});
+
+Load< GLuint > bright_yellow_tex(LoadTagDefault, [](){
+	GLuint tex = 0;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glm::u8vec4 white(0xff, 0xff, 0x00, 0xff);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, glm::value_ptr(white));
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	return new GLuint(tex);
+});
+
+Load< GLuint > dark_yellow_tex(LoadTagDefault, [](){
+	GLuint tex = 0;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glm::u8vec4 white(0x0f, 0x0f, 0x00, 0xff);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, glm::value_ptr(white));
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	return new GLuint(tex);
+});
 
 Scene::Transform *camera_parent_transform = nullptr;
 Scene::Camera *camera = nullptr;
 Scene::Transform *spot_parent_transform = nullptr;
 Scene::Lamp *spot = nullptr;
+
+struct Cube {
+    Scene::Object *obj;
+    GLuint dark_tex, bright_tex;
+    Load< Sound::Sample > sound;
+
+
+    void play() {
+        sound->play( obj->transform->make_local_to_world() * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) );
+    }
+
+    void handle_event(const GLuint dark, const GLuint bright) {
+        if (obj->programs[Scene::Object::ProgramTypeDefault].textures[0] == dark) {
+            obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = bright;
+            obj->count_down = 1.0f;
+            play();
+        } else {
+            obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = dark;
+        }
+    }
+
+    void update(float elapsed, const GLuint dark) {
+        if (obj->count_down <= 0.0f) {
+            obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = dark;
+        } else {
+            obj->count_down -= elapsed;
+        }
+    }
+
+    void printTrans() {
+        std::cout << obj->transform->position.x << " "
+                  << obj->transform->position.y << " "
+                  << obj->transform->position.z << std::endl;
+    }
+};
+
+Cube red_cube;
+Cube blue_cube;
+Cube yellow_cube;
+Cube green_cube;
+
+enum KEY {
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT,
+};
+
+std::vector< KEY > stage1 = {LEFT, UP, RIGHT, DOWN};
 
 Load< Scene > scene(LoadTagDefault, [](){
 	Scene *ret = new Scene;
@@ -164,11 +357,23 @@ Load< Scene > scene(LoadTagDefault, [](){
 
 		obj->programs[Scene::Object::ProgramTypeDefault] = texture_program_info;
 		if (t->name == "Platform") {
-			obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *wood_tex;
+            obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *wood_tex;
 		} else if (t->name == "Pedestal") {
 			obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *marble_tex;
+		} else if (t->name == "RedCube") {
+			obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *dark_red_tex;
+            red_cube.obj = obj;
+		} else if (t->name == "BlueCube") {
+			obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *dark_blue_tex;
+            blue_cube.obj = obj;
+		} else if (t->name == "YellowCube") {
+			obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *dark_yellow_tex;
+            yellow_cube.obj = obj;
+		} else if (t->name == "GreenCube") {
+			obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *dark_green_tex;
+            green_cube.obj = obj;
 		} else {
-			obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *white_tex;
+            obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *dark_blue_tex;
 		}
 
 		obj->programs[Scene::Object::ProgramTypeShadow] = depth_program_info;
@@ -209,7 +414,7 @@ Load< Scene > scene(LoadTagDefault, [](){
 	for (Scene::Lamp *l = ret->first_lamp; l != nullptr; l = l->alloc_next) {
 		if (l->transform->name == "Spot") {
 			if (spot) throw std::runtime_error("Multiple 'Spot' objects in scene.");
-			if (l->type != Scene::Lamp::Spot) throw std::runtime_error("Lamp 'Spot' is not a spotlight.");
+			//if (l->type != Scene::Lamp::Spot) throw std::runtime_error("Lamp 'Spot' is not a spotlight.");
 			spot = l;
 		}
 	}
@@ -225,6 +430,7 @@ GameMode::~GameMode() {
 }
 
 bool GameMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
+
 	//ignore any keys that are the result of automatic key repeat:
 	if (evt.type == SDL_KEYDOWN && evt.key.repeat) {
 		return false;
@@ -242,12 +448,66 @@ bool GameMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 
 	}
 
+    if (evt.type == SDL_KEYDOWN || evt.type == SDL_KEYUP) {
+        if (play_start_music) {
+            red_cube.sound = A_sound;
+            blue_cube.sound = B_sound;
+            yellow_cube.sound = C_sound;
+            green_cube.sound = D_sound;
+
+            red_cube.dark_tex = *dark_red_tex;
+            red_cube.bright_tex = *bright_red_tex;
+
+            red_cube.play();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            blue_cube.play();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            yellow_cube.play();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            green_cube.play();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            play_start_music = false;
+
+            for (auto &key : stage1) {
+                if (key == UP) {
+                    red_cube.handle_event(*dark_red_tex, *bright_red_tex);
+                } else if (key == LEFT) {
+                    blue_cube.handle_event(*dark_blue_tex, *bright_blue_tex);
+                } else if (key == DOWN) {
+                    yellow_cube.handle_event(*dark_yellow_tex, *bright_yellow_tex);
+                } else if (key == RIGHT) {
+                    green_cube.handle_event(*dark_green_tex, *bright_green_tex);
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            }
+
+        } else {
+            if (evt.key.keysym.scancode == SDL_SCANCODE_UP && evt.type == SDL_KEYDOWN) {
+                red_cube.handle_event(*dark_red_tex, *bright_red_tex);
+            }
+            if (evt.key.keysym.scancode == SDL_SCANCODE_LEFT && evt.type == SDL_KEYDOWN) {
+                blue_cube.handle_event(*dark_blue_tex, *bright_blue_tex);
+            }
+            if (evt.key.keysym.scancode == SDL_SCANCODE_DOWN && evt.type == SDL_KEYDOWN) {
+                yellow_cube.handle_event(*dark_yellow_tex, *bright_yellow_tex);
+            }
+            if (evt.key.keysym.scancode == SDL_SCANCODE_RIGHT && evt.type == SDL_KEYDOWN) {
+                green_cube.handle_event(*dark_green_tex, *bright_green_tex);
+            }
+        }
+    }
+
 	return false;
 }
 
 void GameMode::update(float elapsed) {
 	camera_parent_transform->rotation = glm::angleAxis(camera_spin, glm::vec3(0.0f, 0.0f, 1.0f));
 	spot_parent_transform->rotation = glm::angleAxis(spot_spin, glm::vec3(0.0f, 0.0f, 1.0f));
+
+    red_cube.update(elapsed, *dark_red_tex);
+    blue_cube.update(elapsed, *dark_blue_tex);
+    yellow_cube.update(elapsed, *dark_yellow_tex);
+    green_cube.update(elapsed, *dark_green_tex);
 }
 
 //GameMode will render to some offscreen framebuffer(s).
@@ -279,12 +539,12 @@ struct Framebuffers {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
-	
+
 			if (depth_rb == 0) glGenRenderbuffers(1, &depth_rb);
 			glBindRenderbuffer(GL_RENDERBUFFER, depth_rb);
 			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, size.x, size.y);
 			glBindRenderbuffer(GL_RENDERBUFFER, 0);
-	
+
 			if (fb == 0) glGenFramebuffers(1, &fb);
 			glBindFramebuffer(GL_FRAMEBUFFER, fb);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_tex, 0);
@@ -317,7 +577,7 @@ struct Framebuffers {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
-	
+
 			if (shadow_fb == 0) glGenFramebuffers(1, &shadow_fb);
 			glBindFramebuffer(GL_FRAMEBUFFER, shadow_fb);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, shadow_color_tex, 0);

@@ -39,6 +39,11 @@ This shader, along with the code in GameMode::draw() which sets it up, is going 
 
 I also added a blur shader that renders the scene to an offscreen framebuffer and then samples and averages it to come up with a sort of lens blur effect. (See the third part of GameMode::draw .)
 
+
+Sound Effects:
+
+- [UbikPhonik](https://freesound.org/people/UbikPhonik/packs/11206/) (licensed under the [Attribution License](https://creativecommons.org/licenses/by/3.0/))
+
 # Using This Base Code
 
 Before you dive into the code, it helps to understand the overall structure of this repository.

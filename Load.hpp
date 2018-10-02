@@ -39,6 +39,7 @@ void call_load_functions(); //called by main() after GL context created.
 template< typename T >
 struct Load {
 	//Constructing a Load< T > adds the passed function to the list of functions to call:
+    Load() : value(nullptr) {}  // a default constructor
 	Load( LoadTag tag, const std::function< T const *() > &load_fn ) : value(nullptr) {
 		add_load_function(tag, [this,load_fn](){
 			this->value = load_fn();

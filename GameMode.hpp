@@ -30,4 +30,5 @@ struct GameMode : public Mode {
 
 	float camera_spin = 0.0f;
 	float spot_spin = 0.0f;
+    bool play_start_music = true;
 };
