@@ -13,7 +13,7 @@ Screen Shot:
 
 How To Play:
 
-Listen and observe the order of cubes to be triggered. Press the arrow keys in exactly the same order to win. There are 8 stages in total.
+Listen and observe the order of cubes to be triggered. Press the arrow keys in exactly the same order to win. There are 8 stages in total. If any input is wrong, the program will restart current level automatically.
 
 Changes From The Design Document:
 
